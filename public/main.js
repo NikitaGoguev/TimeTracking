@@ -43,16 +43,16 @@
       oldTimers: [],
     },
     methods: {
-      fetchActiveTimers() {
-        fetchJson("/api/timers?isActive=true").then((activeTimers) => {
-          this.activeTimers = activeTimers;
-        });
-      },
-      fetchOldTimers() {
-        fetchJson("/api/timers?isActive=false").then((oldTimers) => {
-          this.oldTimers = oldTimers;
-        });
-      },
+      // fetchActiveTimers() {
+      //   fetchJson("/api/timers?isActive=true").then((activeTimers) => {
+      //     this.activeTimers = activeTimers;
+      //   });
+      // },
+      // fetchOldTimers() {
+      //   fetchJson("/api/timers?isActive=false").then((oldTimers) => {
+      //     this.oldTimers = oldTimers;
+      //   });
+      // },
       createTimer() {
         const description = this.desc;
         this.desc = "";
@@ -64,7 +64,7 @@
           body: JSON.stringify({ description }),
         }).then(({ id }) => {
           info(`Created new timer "${description}" [${id}]`);
-          this.fetchActiveTimers();
+          // this.fetchActiveTimers();
         });
       },
       stopTimer(id) {
@@ -72,8 +72,8 @@
           method: "post",
         }).then(() => {
           info(`Stopped the timer [${id}]`);
-          this.fetchActiveTimers();
-          this.fetchOldTimers();
+          // this.fetchActiveTimers();
+          // this.fetchOldTimers();
         });
       },
       formatTime(ts) {
@@ -92,11 +92,38 @@
       },
     },
     created() {
-      this.fetchActiveTimers();
-      setInterval(() => {
-        this.fetchActiveTimers();
-      }, 1000);
-      this.fetchOldTimers();
+      // this.fetchActiveTimers();
+      // setInterval(() => {
+      //   this.fetchActiveTimers();
+      // }, 1000);
+      // this.fetchOldTimers();
+
+      //
+      const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+      const client = new WebSocket(`${wsProto}//${location.host}`);
+      client.addEventListener("open", () => {
+        console.log("open");
+      });
+      client.addEventListener("message", (mes) => {
+        let data;
+        try {
+          data = JSON.parse(mes.data);
+        } catch (error) {
+          return;
+        }
+
+        if (data.type === "all_timers") {
+          console.log(`got message type ${data.type}`);
+          this.activeTimers = data.activeTimers;
+          this.oldTimers = data.oldTimers;
+        }
+
+        if (data.type === "active_timers") {
+          console.log(`got message type ${data.type}`);
+          this.activeTimers = data.activeTimers;
+        }
+      });
+      //
     },
   });
 })();

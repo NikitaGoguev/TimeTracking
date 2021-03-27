@@ -19,18 +19,20 @@ const clientPromise = new MongoClient.connect(process.env.DB_URI, {
   poolSize: 10,
 });
 
-let db;
-(async () => {
+async function getDBConnection() {
   try {
     const client = await clientPromise;
-    db = client.db("timerApp");
+    return client.db("timerApp");
   } catch (error) {
     console.log("Init db error", error);
+    throw error;
   }
-})();
+}
 
 //#region auth
+//res checked
 async function findUserByUsername(username) {
+  const db = await getDBConnection();
   let res;
   try {
     res = await db.collection("users").findOne({ username });
@@ -38,10 +40,13 @@ async function findUserByUsername(username) {
     console.log("findUserByUsername error");
   }
   if (!res) return;
+
   return renameKey(res, "_id", "id");
 }
 
+//res checked
 async function findUserBySessionId(sessionId) {
+  const db = await getDBConnection();
   let session;
   try {
     session = await db.collection("sessions").findOne(
@@ -70,7 +75,9 @@ async function findUserBySessionId(sessionId) {
   return renameKey(res, "_id", "id");
 }
 
+//res checked
 async function createSession(userId) {
+  const db = await getDBConnection();
   const sessionId = nanoid();
   try {
     await db.collection("sessions").insertOne({
@@ -84,7 +91,9 @@ async function createSession(userId) {
   return sessionId;
 }
 
+//res checked
 async function deleteSession(sessionId) {
+  const db = await getDBConnection();
   try {
     await db.collection("sessions").deleteOne({ sessionId: sessionId });
   } catch (error) {
@@ -92,53 +101,54 @@ async function deleteSession(sessionId) {
   }
 }
 
+//res checked
 async function createUser(username, password) {
-  let newUser;
+  const db = await getDBConnection();
+  let newUser = {
+    username: username,
+    password: hash(password),
+  };
   try {
-    newUser = await db.collection("users").insertOne(
-      {
-        username: username,
-        password: hash(password),
-      },
-      {
-        projection: { _id: 1, username: 1, password: 1 },
-      }
-    );
+    const res = await db.collection("users").insertOne(newUser);
+    if (res.insertedCount === 0) return;
   } catch (error) {
     console.log("createUser error");
     return;
   }
-
   return renameKey(newUser, "_id", "id");
 }
 //#endregion auth
 
 //#region timers
+//res checked
 async function createNewTimer(desc, userId) {
+  const db = await getDBConnection();
+  const newTimer = {
+    userId: userId,
+    description: desc,
+    start: new Date(),
+    isActive: true,
+  };
   let res;
   try {
-    res = await db.collection("timers").insertOne(
-      {
-        userId: userId,
-        description: desc,
-        start: new Date(),
-        isActive: true,
-      },
-      ["_id"]
-    );
+    res = await db.collection("timers").insertOne(newTimer);
+    if (res.insertedCount === 0) return;
   } catch (error) {
     console.log("createNewTimer error");
     return;
   }
-  return renameKey(res, "_id", "id");
+  return renameKey(newTimer, "_id", "id");
 }
 
-async function stopTimer(id, stopTime) {
+async function stopTimer(userId, timerId, stopTime) {
+  const timer = await findTimerById(userId, timerId);
+  if (timer.length === 0) return;
+  const db = await getDBConnection();
   let timerData;
   try {
     timerData = await db.collection("timers").updateOne(
       {
-        _id: ObjectId(id),
+        _id: ObjectId(timerId),
       },
       {
         $set: {
@@ -158,7 +168,27 @@ async function stopTimer(id, stopTime) {
   return createTimerView(renameKey(timerData, "_id", "id"));
 }
 
+async function findTimerById(userId, timerId) {
+  const db = await getDBConnection();
+  let res;
+  try {
+    res = await db
+      .collection("timers")
+      .find({
+        userId: userId,
+        _id: ObjectId(timerId),
+      })
+      .toArray();
+    return res.map((timerData) => createTimerView(timerData));
+  } catch (error) {
+    console.log("findTimer by id error");
+    //console.log(error);
+    return [];
+  }
+}
+
 async function findTimers(userId, isActive) {
+  const db = await getDBConnection();
   let res;
   try {
     if (isActive === undefined) {
@@ -192,6 +222,7 @@ function createTimerView(timerData) {
     },
   };
 }
+
 //#endregion timers
 
 module.exports = {
@@ -203,4 +234,5 @@ module.exports = {
   createNewTimer,
   stopTimer,
   findTimers,
+  findTimerById,
 };
